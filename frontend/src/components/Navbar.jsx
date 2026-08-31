@@ -5,7 +5,8 @@ import { useNotifications } from "../context/NotificationContext";
 import "./Navbar.css";
 
 export default function Navbar() {
-  const { user, logout, isAdmin, isOrganizer } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
+  const isOrganizerOnly = user?.role === "organizer";
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const [showNotifs, setShowNotifs] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -51,20 +52,6 @@ export default function Navbar() {
             </NavLink>
           )}
 
-          {isOrganizer && (
-            <>
-              <NavLink to="/organizer" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
-                Organizer Workspace
-              </NavLink>
-              <NavLink to="/events" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
-                Events
-              </NavLink>
-              <NavLink to="/attendance" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
-                Check-In
-              </NavLink>
-            </>
-          )}
-
           {isAdmin && (
             <>
               <NavLink to="/admin" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
@@ -73,22 +60,58 @@ export default function Navbar() {
               <NavLink to="/analytics" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
                 Analytics
               </NavLink>
+              <NavLink to="/events" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
+                All Events
+              </NavLink>
+              <NavLink to="/attendance" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
+                Check-In
+              </NavLink>
+              <NavLink to="/venues" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
+                Venues
+              </NavLink>
+              <NavLink to="/resources" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
+                Resources
+              </NavLink>
+              <NavLink to="/vendors" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
+                Vendors
+              </NavLink>
+              <NavLink to="/report" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
+                Reports
+              </NavLink>
             </>
           )}
 
-          {/* Operational Modules */}
-          <NavLink to="/venues" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
-            Venues
-          </NavLink>
-          <NavLink to="/resources" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
-            Resources
-          </NavLink>
-          <NavLink to="/vendors" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
-            Vendors
-          </NavLink>
-          <NavLink to="/report" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
-            Reports
-          </NavLink>
+          {isOrganizerOnly && (
+            <>
+              <NavLink to="/organizer" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
+                Organizer Workspace
+              </NavLink>
+              <NavLink to="/finance" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
+                Finance
+              </NavLink>
+              <NavLink to="/events" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
+                Events
+              </NavLink>
+              <NavLink to="/attendance" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
+                Check-In
+              </NavLink>
+              <NavLink to="/analytics" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
+                Analytics
+              </NavLink>
+              <NavLink to="/venues" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
+                Venues
+              </NavLink>
+              <NavLink to="/resources" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
+                Resources
+              </NavLink>
+              <NavLink to="/vendors" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
+                Vendors
+              </NavLink>
+              <NavLink to="/report" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} onClick={() => setMobileMenuOpen(false)}>
+                Reports
+              </NavLink>
+            </>
+          )}
         </div>
 
         {/* Nav Right (Auth & Notifications) */}
@@ -175,13 +198,22 @@ export default function Navbar() {
                     >
                       🎫 My Event Passes
                     </Link>
-                    {isOrganizer && (
+                    {isOrganizerOnly && (
                       <Link
                         to="/organizer"
                         className="dropdown-item"
                         onClick={() => setShowUserMenu(false)}
                       >
                         📊 Organizer Workspace
+                      </Link>
+                    )}
+                    {isOrganizerOnly && (
+                      <Link
+                        to="/finance"
+                        className="dropdown-item"
+                        onClick={() => setShowUserMenu(false)}
+                      >
+                        💰 Finance Dashboard
                       </Link>
                     )}
                     {isAdmin && (
@@ -191,6 +223,15 @@ export default function Navbar() {
                         onClick={() => setShowUserMenu(false)}
                       >
                         🛡️ Admin Control Panel
+                      </Link>
+                    )}
+                    {isAdmin && (
+                      <Link
+                        to="/analytics"
+                        className="dropdown-item"
+                        onClick={() => setShowUserMenu(false)}
+                      >
+                        📈 Platform Analytics
                       </Link>
                     )}
                     <div className="dropdown-divider"></div>
@@ -203,10 +244,10 @@ export default function Navbar() {
             </>
           ) : (
             <div className="nav-auth-buttons">
-              <Link to="/login" className="btn btn-outline">
+              <Link to="/login" className="nav-btn-signin">
                 Sign In
               </Link>
-              <Link to="/register" className="btn btn-primary">
+              <Link to="/register" className="nav-btn-register">
                 Register
               </Link>
             </div>

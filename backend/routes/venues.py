@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from database import get_db
 from auth import require_roles
+from ops import write_audit
 
 router = APIRouter()
 
@@ -12,6 +13,7 @@ class VenueIn(BaseModel):
     location: str = Field(..., min_length=2)
 
 
+@router.post("", status_code=201)
 @router.post("/", status_code=201)
 def add_venue(
     venue: VenueIn,
@@ -22,12 +24,22 @@ def add_venue(
         "INSERT INTO venues (name, capacity, location) VALUES (?, ?, ?)",
         (venue.name.strip(), venue.capacity, venue.location.strip()),
     )
-    db.commit()
     venue_id = cur.lastrowid
+    write_audit(
+        db,
+        actor=current_user,
+        action="venue.create",
+        object_type="venue",
+        object_id=venue_id,
+        object_label=venue.name.strip(),
+        new_value=venue.model_dump(),
+    )
+    db.commit()
     db.close()
     return {"id": venue_id, **venue.model_dump(), "availability": True}
 
 
+@router.get("")
 @router.get("/")
 def get_venues():
     db = get_db()
@@ -42,23 +54,33 @@ def delete_venue(
     current_user: dict = Depends(require_roles(["admin"])),
 ):
     db = get_db()
-    row = db.execute("SELECT id FROM venues WHERE id = ?", (venue_id,)).fetchone()
+    row = db.execute("SELECT id, name FROM venues WHERE id = ?", (venue_id,)).fetchone()
     if not row:
         db.close()
         raise HTTPException(status_code=404, detail="Venue not found")
 
-    # Check if venue is currently assigned to upcoming events
+    # Check if venue is currently assigned to upcoming active events
     active_event = db.execute(
-        "SELECT id, name FROM events WHERE venue_id = ? AND status != 'cancelled'",
+        "SELECT id, name FROM events WHERE venue_id = ? AND status NOT IN ('cancelled', 'draft')",
         (venue_id,),
     ).fetchone()
     if active_event:
         db.close()
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot delete venue: it is assigned to event '{active_event['name']}'.",
+            detail=f"Cannot delete venue: it is currently assigned to active event '{active_event['name']}'.",
         )
 
+    write_audit(
+        db,
+        actor=current_user,
+        action="venue.delete",
+        object_type="venue",
+        object_id=venue_id,
+        object_label=row["name"],
+        previous_value=None,
+        new_value=None,
+    )
     db.execute("DELETE FROM venues WHERE id = ?", (venue_id,))
     db.commit()
     db.close()

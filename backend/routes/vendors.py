@@ -25,6 +25,7 @@ class RatingIn(BaseModel):
 
 # ── Vendor CRUD ───────────────────────────────────────────────────────────────
 
+@router.post("", status_code=201)
 @router.post("/", status_code=201)
 def add_vendor(
     v: VendorIn,
@@ -41,6 +42,7 @@ def add_vendor(
     return {"id": vid, **v.model_dump(), "rating": 0.0}
 
 
+@router.get("")
 @router.get("/")
 def get_vendors():
     db = get_db()

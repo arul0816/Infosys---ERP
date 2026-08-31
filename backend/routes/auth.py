@@ -257,6 +257,9 @@ def get_all_users(
     return [dict(r) for r in rows]
 
 
+from ops import write_audit
+
+
 @router.put("/users/{user_id}/role")
 def update_user_role(
     user_id: int,
@@ -267,12 +270,25 @@ def update_user_role(
         raise HTTPException(status_code=400, detail="Invalid role specified.")
 
     db = get_db()
-    user = db.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+    user = db.execute("SELECT id, name, email, role FROM users WHERE id = ?", (user_id,)).fetchone()
     if not user:
         db.close()
         raise HTTPException(status_code=404, detail="User not found.")
 
+    prev_role = user["role"]
     db.execute("UPDATE users SET role = ? WHERE id = ?", (body.role, user_id))
+
+    write_audit(
+        db,
+        actor=current_user,
+        action="user.role_change",
+        object_type="user",
+        object_id=user_id,
+        object_label=f"{user['name']} ({user['email']})",
+        previous_value=prev_role,
+        new_value=body.role,
+    )
+
     db.commit()
     db.close()
     return {"message": f"User role updated to {body.role}"}
@@ -291,12 +307,25 @@ def update_user_status(
         raise HTTPException(status_code=400, detail="You cannot deactivate your own admin account.")
 
     db = get_db()
-    user = db.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+    user = db.execute("SELECT id, name, email, status FROM users WHERE id = ?", (user_id,)).fetchone()
     if not user:
         db.close()
         raise HTTPException(status_code=404, detail="User not found.")
 
+    prev_status = user["status"]
     db.execute("UPDATE users SET status = ? WHERE id = ?", (body.status, user_id))
+
+    write_audit(
+        db,
+        actor=current_user,
+        action="user.status_change",
+        object_type="user",
+        object_id=user_id,
+        object_label=f"{user['name']} ({user['email']})",
+        previous_value=prev_status,
+        new_value=body.status,
+    )
+
     db.commit()
     db.close()
     return {"message": f"User status updated to {body.status}"}
@@ -311,10 +340,21 @@ def delete_user(
         raise HTTPException(status_code=400, detail="You cannot delete your own admin account.")
 
     db = get_db()
-    user = db.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+    user = db.execute("SELECT id, name, email FROM users WHERE id = ?", (user_id,)).fetchone()
     if not user:
         db.close()
         raise HTTPException(status_code=404, detail="User not found.")
+
+    write_audit(
+        db,
+        actor=current_user,
+        action="user.delete",
+        object_type="user",
+        object_id=user_id,
+        object_label=f"{user['name']} ({user['email']})",
+        previous_value=None,
+        new_value=None,
+    )
 
     db.execute("DELETE FROM users WHERE id = ?", (user_id,))
     db.commit()

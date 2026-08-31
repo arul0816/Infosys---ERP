@@ -12,6 +12,7 @@ import Register          from "./pages/Register";
 import Profile           from "./pages/Profile";
 import MyRegistrations   from "./pages/MyRegistrations";
 import OrganizerDashboard from "./pages/OrganizerDashboard";
+import FinanceDashboard  from "./pages/FinanceDashboard";
 import AdminDashboard    from "./pages/AdminDashboard";
 import Analytics         from "./pages/Analytics";
 import Events            from "./pages/Events";
@@ -41,10 +42,26 @@ export default function App() {
                 <Route path="/register" element={<Register />} />
 
                 {/* Operations Directory Routes */}
-                <Route path="/venues" element={<Venues />} />
-                <Route path="/resources" element={<Resources />} />
-                <Route path="/vendors" element={<Vendors />} />
-                <Route path="/report" element={<Report />} />
+                <Route path="/venues" element={
+                    <ProtectedRoute allowedRoles={["admin", "organizer"]}>
+                      <Venues />
+                    </ProtectedRoute>
+                  } />
+                <Route path="/resources" element={
+                    <ProtectedRoute allowedRoles={["admin", "organizer"]}>
+                      <Resources />
+                    </ProtectedRoute>
+                  } />
+                <Route path="/vendors" element={
+                    <ProtectedRoute allowedRoles={["admin", "organizer"]}>
+                      <Vendors />
+                    </ProtectedRoute>
+                  } />
+                <Route path="/report" element={
+                    <ProtectedRoute allowedRoles={["admin", "organizer"]}>
+                      <Report />
+                    </ProtectedRoute>
+                  } />
 
                 {/* Authenticated Participant Routes */}
                 <Route
@@ -70,6 +87,14 @@ export default function App() {
                   element={
                     <ProtectedRoute allowedRoles={["admin", "organizer"]}>
                       <OrganizerDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/finance"
+                  element={
+                    <ProtectedRoute allowedRoles={["admin", "organizer"]}>
+                      <FinanceDashboard />
                     </ProtectedRoute>
                   }
                 />

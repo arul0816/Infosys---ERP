@@ -7,17 +7,20 @@ export default function OrganizerDashboard() {
   const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [evList, sum] = await Promise.all([
+      const [evList, sum, ov] = await Promise.all([
         api.getMyEvents(),
         api.getAnalyticsSummary("30"),
+        api.getAnalyticsOverview().catch(() => null),
       ]);
       setEvents(evList);
       setSummary(sum);
+      setOverview(ov);
     } catch (err) {
       console.error(err);
     } finally {
@@ -32,6 +35,7 @@ export default function OrganizerDashboard() {
   const totalRegistered = events.reduce((acc, e) => acc + (e.registered_count || 0), 0);
   const totalAttended = events.reduce((acc, e) => acc + (e.attended_count || 0), 0);
   const totalWaitlisted = events.reduce((acc, e) => acc + (e.waitlisted_count || 0), 0);
+  const kpis = overview?.kpis || {};
 
   if (loading && !summary) {
     return (
@@ -80,6 +84,28 @@ export default function OrganizerDashboard() {
           <div className="stat-label">In Waitlist Queue</div>
         </div>
       </div>
+
+      {/* Finance & Operations KPIs */}
+      {overview && (
+        <div className="stat-row">
+          <div className="stat-card" style={{ background: "#7c3aed" }}>
+            <div className="stat-value">₹{(kpis.total_budget || 0).toLocaleString()}</div>
+            <div className="stat-label">Total Budget</div>
+          </div>
+          <div className="stat-card" style={{ background: "#dc2626" }}>
+            <div className="stat-value">₹{(kpis.total_expenses || 0).toLocaleString()}</div>
+            <div className="stat-label">Total Expenses</div>
+          </div>
+          <div className="stat-card" style={{ background: "#0891b2" }}>
+            <div className="stat-value">{kpis.budget_utilization || 0}%</div>
+            <div className="stat-label">Budget Utilization</div>
+          </div>
+          <div className="stat-card" style={{ background: "#ca8a04" }}>
+            <div className="stat-value">{kpis.avg_vendor_rating || 0} ⭐</div>
+            <div className="stat-label">Avg Vendor Rating</div>
+          </div>
+        </div>
+      )}
 
       {/* Events Overview */}
       <div className="card">
@@ -164,6 +190,11 @@ export default function OrganizerDashboard() {
       <div className="card">
         <h2>Operations & Resource Console</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
+          <Link to="/finance" className="console-nav-box">
+            <span className="console-icon">💼</span>
+            <h4>Finance & Budget</h4>
+            <p>Manage budgets, expenses and sponsorships</p>
+          </Link>
           <Link to="/venues" className="console-nav-box">
             <span className="console-icon">🏛️</span>
             <h4>Venues</h4>

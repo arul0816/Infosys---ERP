@@ -111,6 +111,9 @@ export default function EventDetail() {
   const filled = event.registered_count || 0;
   const pct = Math.min(100, Math.round((filled / cap) * 100));
   const isFull = event.is_full;
+  const isRegistrable = event.status === "published" || event.status === "ongoing";
+  const deadlinePassed = event.registration_deadline && new Date().toISOString().slice(0, 10) > event.registration_deadline.slice(0, 10);
+  const canRegister = isRegistrable && !deadlinePassed;
 
   return (
     <div className="event-detail-page">
@@ -150,7 +153,7 @@ export default function EventDetail() {
                 <span className="highlight-icon">⏰</span>
                 <div>
                   <label>Time</label>
-                  <strong>{event.time}</strong>
+                  <strong>{event.time} {event.end_time ? `– ${event.end_time}` : ""}</strong>
                 </div>
               </div>
               <div className="highlight-item">
@@ -229,7 +232,7 @@ export default function EventDetail() {
                 ></div>
               </div>
 
-              {isFull && (
+              {isFull && isRegistrable && !deadlinePassed && (
                 <div className="waitlist-indicator">
                   <span>⏳ Capacity Reached: Waitlist is active. If registered participants cancel, seats are auto-promoted in order!</span>
                 </div>
@@ -237,18 +240,38 @@ export default function EventDetail() {
             </div>
 
             {event.registration_deadline && (
-              <div className="deadline-notice">
-                <span>⏱️ Registration Closes:</span>
+              <div className="deadline-notice" style={{ marginBottom: "1rem" }}>
+                <span>⏱️ Registration Deadline:</span>
                 <strong>{event.registration_deadline}</strong>
+                {deadlinePassed && (
+                  <span style={{ display: "block", color: "#dc2626", fontSize: "0.8rem", marginTop: "0.2rem" }}>
+                    ⚠️ Registration deadline has passed
+                  </span>
+                )}
+              </div>
+            )}
+
+            {!isRegistrable && (
+              <div className="alert alert-warning" style={{ margin: "0.5rem 0 1rem 0", fontSize: "0.88rem" }}>
+                {event.status === "draft" && "📝 Event is currently in DRAFT status and is not yet open for registrations."}
+                {event.status === "completed" && "🏁 Event has concluded. Registrations are closed."}
+                {event.status === "cancelled" && "🚫 Event has been cancelled. Registrations are inactive."}
               </div>
             )}
 
             <button
               className={`btn btn-block ${isFull ? "btn-warning" : "btn-primary"}`}
-              style={{ padding: "0.85rem 1rem", fontSize: "1rem" }}
+              style={{ padding: "0.85rem 1rem", fontSize: "1rem", opacity: canRegister ? 1 : 0.6 }}
+              disabled={!canRegister}
               onClick={() => setShowRegModal(true)}
             >
-              {isFull ? "Join the Waitlist Now" : "Register for Event"}
+              {!isRegistrable
+                ? `Event ${event.status?.toUpperCase()}`
+                : deadlinePassed
+                ? "Registration Closed"
+                : isFull
+                ? "Join the Waitlist Now"
+                : "Register for Event"}
             </button>
 
             <p style={{ fontSize: "0.78rem", color: "#64748b", textAlign: "center", marginTop: "0.75rem" }}>

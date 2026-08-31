@@ -9,6 +9,7 @@ const EMPTY = {
   category: "Technology",
   date: "",
   time: "",
+  end_time: "",
   budget: "",
   capacity: 100,
   registration_deadline: "",
@@ -16,18 +17,19 @@ const EMPTY = {
   is_online: false,
   meeting_link: "",
   visibility: "public",
-  status: "published",
+  status: "draft",
 };
 
 const EVENT_TYPES = ["Conference", "Seminar", "Workshop", "Hackathon", "Cultural Fest", "Sports Meet", "Webinar", "Other"];
 const CATEGORIES = ["Technology", "Management", "Cultural", "Sports", "Workshop", "Conference", "Hackathon", "Seminar", "Leadership"];
-const STATUSES = ["published", "planned", "draft", "completed", "cancelled"];
+const _STATUSES = ["draft", "published", "ongoing", "completed", "cancelled"];
 
 export default function Events() {
   const [events, setEvents] = useState([]);
   const [venues, setVenues] = useState([]);
   const [form, setForm] = useState(EMPTY);
   const [editingId, setEditingId] = useState(null);
+  const [editingLocked, setEditingLocked] = useState(false);
   const [assignId, setAssignId] = useState(null);
   const [venueId, setVenueId] = useState("");
   const [msg, setMsg] = useState(null);
@@ -64,10 +66,11 @@ export default function Events() {
         flash("Event updated successfully!");
       } else {
         await api.createEvent(payload);
-        flash("Event created and published successfully!");
+        flash(`Event created successfully in '${payload.status.toUpperCase()}' status!`);
       }
       setForm(EMPTY);
       setEditingId(null);
+      setEditingLocked(false);
       load();
     } catch (err) {
       flash(err.message, "error");
@@ -75,12 +78,15 @@ export default function Events() {
   };
 
   const handleEdit = (ev) => {
+    const isLocked = ev.status === "completed" || ev.status === "cancelled";
+    setEditingLocked(isLocked);
     setForm({
       name: ev.name,
       event_type: ev.event_type,
       category: ev.category || "Technology",
       date: ev.date,
       time: ev.time,
+      end_time: ev.end_time || "",
       budget: ev.budget,
       capacity: ev.capacity || 100,
       registration_deadline: ev.registration_deadline || "",
@@ -93,6 +99,23 @@ export default function Events() {
     setEditingId(ev.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  const handleQuickTransition = async (ev, newStatus) => {
+    if (newStatus === "cancelled" && !confirm(`Cancel event '${ev.name}'? This will automatically cancel all attendee registrations and tickets.`)) {
+      return;
+    }
+    try {
+      await api.updateEvent(ev.id, {
+        ...ev,
+        status: newStatus,
+      });
+      flash(`Event status transitioned to ${newStatus.toUpperCase()}`);
+      load();
+    } catch (err) {
+      flash(err.message, "error");
+    }
+  };
+
 
   const handleDelete = async (id, name) => {
     if (!confirm(`Delete event '${name}'? This action cannot be undone.`)) return;
@@ -192,12 +215,21 @@ export default function Events() {
               </div>
 
               <div className="form-group">
-                <label>Time</label>
+                <label>Start Time</label>
                 <input
                   type="time"
                   required
                   value={form.time}
                   onChange={(e) => setForm({ ...form, time: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>End Time (Optional)</label>
+                <input
+                  type="time"
+                  value={form.end_time}
+                  onChange={(e) => setForm({ ...form, end_time: e.target.value })}
                 />
               </div>
 
@@ -234,14 +266,16 @@ export default function Events() {
               </div>
 
               <div className="form-group">
-                <label>Publication Status</label>
+                <label>Lifecycle Status</label>
                 <select
                   value={form.status}
                   onChange={(e) => setForm({ ...form, status: e.target.value })}
                 >
-                  {STATUSES.map((s) => (
-                    <option key={s}>{s}</option>
-                  ))}
+                  <option value="draft">Draft (Private, not open for registration)</option>
+                  <option value="published">Published (Active & Registrable)</option>
+                  <option value="ongoing">Ongoing (In Progress)</option>
+                  <option value="completed">Completed (Concluded)</option>
+                  <option value="cancelled">Cancelled</option>
                 </select>
               </div>
 
@@ -288,15 +322,22 @@ export default function Events() {
               )}
             </div>
 
+            {editingLocked && (
+              <div className="alert alert-warning" style={{ marginTop: "1rem" }}>
+                🔒 <strong>Event Locked:</strong> This event is in <strong>{form.status.toUpperCase()}</strong> status. Its details cannot be modified.
+              </div>
+            )}
+
             <div className="btn-row" style={{ marginTop: "1rem" }}>
               <button
                 type="submit"
+                disabled={editingLocked}
                 className={`btn ${editingId ? "btn-warning" : "btn-primary"}`}
               >
-                {editingId ? "Save Event Changes" : "Create & Publish Event"}
+                {editingId ? "Save Event Changes" : "Create Event"}
               </button>
               {editingId && (
-                <button type="button" className="btn btn-danger" onClick={cancelEdit}>
+                <button type="button" className="btn btn-secondary" onClick={cancelEdit}>
                   Cancel Edit
                 </button>
               )}
@@ -377,11 +418,11 @@ export default function Events() {
                   <th>#</th>
                   <th>Event Name</th>
                   <th>Category</th>
-                  <th>Date & Time</th>
+                  <th>Date & Time Window</th>
                   <th>Capacity & Reg</th>
-                  <th>Status</th>
+                  <th>Lifecycle Status</th>
                   <th>Venue / Format</th>
-                  <th>Actions</th>
+                  <th>Actions & Lifecycle</th>
                 </tr>
               </thead>
               <tbody>
@@ -401,7 +442,9 @@ export default function Events() {
                       </td>
                       <td>
                         {ev.date} <br />
-                        <span style={{ fontSize: "0.78rem", color: "#64748b" }}>{ev.time}</span>
+                        <span style={{ fontSize: "0.78rem", color: "#64748b" }}>
+                          {ev.time} {ev.end_time ? `– ${ev.end_time}` : ""}
+                        </span>
                       </td>
                       <td>
                         <strong>{reg} / {cap}</strong>
@@ -412,7 +455,9 @@ export default function Events() {
                         )}
                       </td>
                       <td>
-                        <span className={`badge badge-${ev.status}`}>{ev.status}</span>
+                        <span className={`badge badge-${ev.status}`}>
+                          {ev.status?.toUpperCase()}
+                        </span>
                       </td>
                       <td>
                         {ev.is_online ? (
@@ -422,24 +467,55 @@ export default function Events() {
                         )}
                       </td>
                       <td>
-                        <div className="btn-row" style={{ margin: 0 }}>
+                        <div className="btn-row" style={{ margin: 0, gap: "0.3rem" }}>
                           <Link to={`/events/${ev.id}`} className="btn btn-primary btn-sm">
                             View
                           </Link>
                           {isOrganizer && (
                             <>
-                              <button className="btn btn-info btn-sm" onClick={() => handleEdit(ev)}>
-                                Edit
-                              </button>
-                              <button
-                                className="btn btn-success btn-sm"
-                                onClick={() => {
-                                  setAssignId(ev.id);
-                                  setVenueId("");
-                                }}
-                              >
-                                Venue
-                              </button>
+                              {ev.status === "draft" && (
+                                <button
+                                  className="btn btn-success btn-sm"
+                                  title="Publish event to attendees"
+                                  onClick={() => handleQuickTransition(ev, "published")}
+                                >
+                                  🚀 Publish
+                                </button>
+                              )}
+                              {ev.status === "published" && (
+                                <button
+                                  className="btn btn-warning btn-sm"
+                                  title="Cancel event and notify attendees"
+                                  onClick={() => handleQuickTransition(ev, "cancelled")}
+                                >
+                                  🚫 Cancel
+                                </button>
+                              )}
+                              {ev.status === "ongoing" && (
+                                <button
+                                  className="btn btn-info btn-sm"
+                                  title="Mark event as completed"
+                                  onClick={() => handleQuickTransition(ev, "completed")}
+                                >
+                                  🏁 Complete
+                                </button>
+                              )}
+                              {ev.status !== "completed" && ev.status !== "cancelled" && (
+                                <>
+                                  <button className="btn btn-outline btn-sm" onClick={() => handleEdit(ev)}>
+                                    Edit
+                                  </button>
+                                  <button
+                                    className="btn btn-outline btn-sm"
+                                    onClick={() => {
+                                      setAssignId(ev.id);
+                                      setVenueId("");
+                                    }}
+                                  >
+                                    Venue
+                                  </button>
+                                </>
+                              )}
                               <button
                                 className="btn btn-danger btn-sm"
                                 onClick={() => handleDelete(ev.id, ev.name)}

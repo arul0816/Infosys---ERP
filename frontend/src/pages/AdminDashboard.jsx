@@ -5,9 +5,13 @@ import { api } from "../api/api";
 export default function AdminDashboard() {
   const [summary, setSummary] = useState(null);
   const [users, setUsers] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [auditLoading, setAuditLoading] = useState(false);
   const [userSearch, setUserSearch] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState("");
+  const [auditSearch, setAuditSearch] = useState("");
+  const [auditTypeFilter, setAuditTypeFilter] = useState("All");
   const [msg, setMsg] = useState(null);
 
   const flash = (text, type = "success") => {
@@ -18,16 +22,34 @@ export default function AdminDashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [sum, userList] = await Promise.all([
+      const [sum, userList, logs] = await Promise.all([
         api.getAnalyticsSummary("30"),
         api.getUsers(),
+        api.getAuditLogs("limit=100").catch(() => []),
       ]);
       setSummary(sum);
       setUsers(userList);
+      setAuditLogs(logs);
     } catch (err) {
       flash(err.message || "Failed to load admin dashboard data.", "error");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadAuditLogs = async () => {
+    setAuditLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (auditTypeFilter && auditTypeFilter !== "All") params.append("object_type", auditTypeFilter);
+      if (auditSearch) params.append("search", auditSearch);
+      params.append("limit", "100");
+      const logs = await api.getAuditLogs(params.toString());
+      setAuditLogs(logs);
+    } catch (err) {
+      flash(err.message || "Failed to refresh audit logs.", "error");
+    } finally {
+      setAuditLoading(false);
     }
   };
 
@@ -76,6 +98,31 @@ export default function AdminDashboard() {
     return matchSearch && matchRole;
   });
 
+  const filteredAuditLogs = auditLogs.filter((log) => {
+    const matchType = auditTypeFilter === "All" || log.object_type?.toLowerCase() === auditTypeFilter.toLowerCase();
+    const searchLower = auditSearch.toLowerCase();
+    const matchSearch =
+      !auditSearch ||
+      log.actor_name?.toLowerCase().includes(searchLower) ||
+      log.action?.toLowerCase().includes(searchLower) ||
+      log.object_label?.toLowerCase().includes(searchLower) ||
+      log.previous_value?.toLowerCase().includes(searchLower) ||
+      log.new_value?.toLowerCase().includes(searchLower);
+    return matchType && matchSearch;
+  });
+
+  const formatDiff = (prev, next) => {
+    if (!prev && !next) return "—";
+    if (!prev && next) return <span style={{ color: "#059669" }}>+ {typeof next === "object" ? JSON.stringify(next) : String(next)}</span>;
+    if (prev && !next) return <span style={{ color: "#dc2626" }}>- {typeof prev === "object" ? JSON.stringify(prev) : String(prev)}</span>;
+    return (
+      <span style={{ fontSize: "0.85rem" }}>
+        <del style={{ color: "#94a3b8", marginRight: "0.3rem" }}>{typeof prev === "object" ? JSON.stringify(prev) : String(prev)}</del>
+        <span style={{ color: "#2563eb", fontWeight: "bold" }}>➔ {typeof next === "object" ? JSON.stringify(next) : String(next)}</span>
+      </span>
+    );
+  };
+
   if (loading && !summary) {
     return (
       <div className="loading-state">
@@ -91,7 +138,7 @@ export default function AdminDashboard() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
           <div>
             <h1>🛡️ Administrator Control Center</h1>
-            <p>System governance, user role administration, platform telemetry and data oversight</p>
+            <p>System governance, user role administration, platform telemetry and enterprise audit logging</p>
           </div>
           <div className="btn-row" style={{ margin: 0 }}>
             <Link to="/analytics" className="btn btn-primary">
@@ -220,6 +267,95 @@ export default function AdminDashboard() {
         )}
       </div>
 
+      {/* Enterprise Audit Log Explorer */}
+      <div className="card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.75rem" }}>
+          <div>
+            <h2>📜 Enterprise Audit Log Explorer ({filteredAuditLogs.length})</h2>
+            <p style={{ fontSize: "0.85rem", color: "#64748b", margin: 0 }}>
+              Immutable audit trail tracking governance actions, role adjustments, status changes, and critical operations
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+            <div className="form-group" style={{ margin: 0, minWidth: "220px" }}>
+              <input
+                type="text"
+                placeholder="Search actor, object, action, diff..."
+                value={auditSearch}
+                onChange={(e) => setAuditSearch(e.target.value)}
+              />
+            </div>
+            <div className="form-group" style={{ margin: 0, minWidth: "150px" }}>
+              <select value={auditTypeFilter} onChange={(e) => setAuditTypeFilter(e.target.value)}>
+                <option value="All">All Object Types</option>
+                <option value="event">Event Actions</option>
+                <option value="user">User Actions</option>
+                <option value="attendee">Attendee & Registrations</option>
+                <option value="resource">Resources</option>
+                <option value="venue">Venues</option>
+              </select>
+            </div>
+            <button className="btn btn-outline btn-sm" onClick={loadAuditLogs} disabled={auditLoading}>
+              {auditLoading ? "Refreshing..." : "🔄 Refresh"}
+            </button>
+          </div>
+        </div>
+
+        {filteredAuditLogs.length === 0 ? (
+          <p className="empty-state">No audit log entries recorded yet.</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Actor (Who)</th>
+                  <th>Action</th>
+                  <th>Object</th>
+                  <th>Target Details / Diff</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAuditLogs.map((log) => (
+                  <tr key={log.id}>
+                    <td style={{ whiteSpace: "nowrap", fontSize: "0.85rem", color: "#64748b" }}>
+                      {log.created_at}
+                    </td>
+                    <td>
+                      <div>
+                        <strong>{log.actor_name || "System"}</strong>
+                        <div style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                          <span className={`badge badge-sm badge-${log.actor_role === "admin" ? "active" : "draft"}`}>
+                            {log.actor_role || "system"}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="badge badge-outline" style={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+                        {log.action}
+                      </span>
+                    </td>
+                    <td>
+                      <div>
+                        <span style={{ fontSize: "0.8rem", textTransform: "uppercase", fontWeight: 600, color: "#4f46e5" }}>
+                          {log.object_type}
+                        </span>
+                        <div style={{ fontWeight: 500 }}>{log.object_label || `#${log.object_id}`}</div>
+                      </div>
+                    </td>
+                    <td>
+                      {formatDiff(log.previous_value, log.new_value)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* System Quick Links */}
       <div className="card">
         <h2>System Shortcuts & Data Exports</h2>
@@ -244,3 +380,4 @@ export default function AdminDashboard() {
     </div>
   );
 }
+

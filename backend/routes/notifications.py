@@ -5,6 +5,7 @@ from auth import get_current_user
 router = APIRouter()
 
 
+@router.get("")
 @router.get("/")
 def get_notifications(current_user: dict = Depends(get_current_user)):
     db = get_db()

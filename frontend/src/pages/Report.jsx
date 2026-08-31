@@ -81,7 +81,21 @@ export default function Report() {
                 <span>🏷️ {ev.category || ev.event_type}</span> · <span>📅 {ev.date} at {ev.time}</span>
               </div>
             </div>
-            <span className={`badge badge-${ev.status}`}>{ev.status?.toUpperCase()}</span>
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => api.downloadExport(`/reports/events/${ev.id}/pdf`, `event_${ev.id}_report.pdf`)}
+              >
+                📄 PDF
+              </button>
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => api.downloadExport(`/reports/events/${ev.id}/attendees/csv`, `event_${ev.id}_attendees.csv`)}
+              >
+                📥 CSV
+              </button>
+              <span className={`badge badge-${ev.status}`}>{ev.status?.toUpperCase()}</span>
+            </div>
           </div>
 
           <div className="report-metrics-grid">

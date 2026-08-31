@@ -20,7 +20,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const res = await api.login({ email, password });
+      const res = await api.login({ email: email.trim().toLowerCase(), password });
       login(res.user, res.token);
       navigate(from, { replace: true });
     } catch (err) {
@@ -30,9 +30,37 @@ export default function Login() {
     }
   };
 
-  const quickLogin = (demoEmail, demoPwd) => {
-    setEmail(demoEmail);
-    setPassword(demoPwd);
+  const quickDemoLogin = async (emailToUse, passwordToUse, role = "participant", name = "Demo User") => {
+    setError(null);
+    setLoading(true);
+    setEmail(emailToUse);
+    setPassword(passwordToUse);
+    try {
+      let res;
+      try {
+        res = await api.login({ email: emailToUse, password: passwordToUse });
+      } catch (loginErr) {
+        if (loginErr.message?.includes("Invalid email or password")) {
+          await api.registerUser({
+            name,
+            email: emailToUse,
+            password: passwordToUse,
+            role,
+            phone: "9876543210",
+            organization: "EventSphere",
+          });
+          res = await api.login({ email: emailToUse, password: passwordToUse });
+        } else {
+          throw loginErr;
+        }
+      }
+      login(res.user, res.token);
+      navigate(from, { replace: true });
+    } catch (err) {
+      setError(err.message || "Demo login failed. Make sure backend server is running.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -76,30 +104,32 @@ export default function Login() {
           </button>
         </form>
 
-        {/* Demo Fast Login Helpers */}
         <div className="demo-accounts-box">
-          <span>⚡ Quick Demo Logins:</span>
-          <div className="demo-btns-grid">
+          <span>⚡ 1-Click Demo Accounts</span>
+          <div className="demo-btns-grid" style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
             <button
               type="button"
               className="demo-badge-btn badge-admin"
-              onClick={() => quickLogin("admin@eventsphere.com", "admin123")}
+              onClick={() => quickDemoLogin("admin@eventsphere.com", "admin123", "admin", "Demo Admin")}
+              disabled={loading}
             >
-              🛡️ Admin
+              🛡️ Sign in as Admin (admin@eventsphere.com)
             </button>
             <button
               type="button"
               className="demo-badge-btn badge-organizer"
-              onClick={() => quickLogin("organizer@eventsphere.com", "organizer123")}
+              onClick={() => quickDemoLogin("organizer@eventsphere.com", "organizer123", "organizer", "Lead Organizer")}
+              disabled={loading}
             >
-              📊 Organizer
+              📊 Sign in as Organizer (organizer@eventsphere.com)
             </button>
             <button
               type="button"
-              className="demo-badge-btn badge-user"
-              onClick={() => quickLogin("user@eventsphere.com", "user123")}
+              className="demo-badge-btn badge-participant"
+              onClick={() => quickDemoLogin("user@eventsphere.com", "user123", "participant", "Active Participant")}
+              disabled={loading}
             >
-              👤 Participant
+              👤 Sign in as Participant (user@eventsphere.com)
             </button>
           </div>
         </div>

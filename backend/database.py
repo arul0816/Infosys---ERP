@@ -6,9 +6,10 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "eventsphere.db")
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 30000")
     return conn
 
 
@@ -18,7 +19,12 @@ def hash_password(password: str, salt: str = "eventsphere_secure_salt_2025") -> 
 
 def init_db():
     conn = get_db()
+    try:
+        conn.execute("PRAGMA journal_mode = WAL")
+    except Exception:
+        pass
     cur = conn.cursor()
+
 
     # ── 1. Users Table ────────────────────────────────────────────────────────
     cur.execute("""
@@ -65,8 +71,9 @@ def init_db():
             event_type            TEXT    NOT NULL,
             date                  TEXT    NOT NULL,
             time                  TEXT    NOT NULL,
+            end_time              TEXT    DEFAULT '',
             budget                REAL    NOT NULL DEFAULT 0,
-            status                TEXT    DEFAULT 'planned',       -- 'planned', 'published', 'completed', 'cancelled', 'draft'
+            status                TEXT    DEFAULT 'draft',         -- 'draft', 'published', 'ongoing', 'completed', 'cancelled'
             venue_id              INTEGER,
             description           TEXT    DEFAULT '',
             banner_url            TEXT    DEFAULT '',
@@ -170,7 +177,163 @@ def init_db():
         )
     """)
 
-    # ── 10. Safe Column Migrations for Existing Databases ─────────────────────
+    # ── 10. Budget Management Table ───────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS budgets (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id        INTEGER NOT NULL UNIQUE,
+            total_budget    REAL    NOT NULL DEFAULT 0,
+            notes           TEXT    DEFAULT '',
+            created_by      INTEGER NOT NULL,
+            created_at      TEXT    DEFAULT (datetime('now')),
+            updated_at      TEXT    DEFAULT (datetime('now')),
+            FOREIGN KEY (event_id)   REFERENCES events(id)  ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id)   ON DELETE SET NULL
+        )
+    """)
+
+    # ── 11. Expense Tracking Table ────────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS expenses (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id    INTEGER NOT NULL,
+            category    TEXT    NOT NULL DEFAULT 'Other', -- 'Venue', 'Catering', 'Marketing', 'Equipment', 'Staffing', 'Transportation', 'Logistics', 'Other'
+            description TEXT    NOT NULL,
+            amount      REAL    NOT NULL DEFAULT 0,
+            date        TEXT    NOT NULL,
+            vendor_id   INTEGER,
+            status      TEXT    DEFAULT 'pending', -- 'pending', 'approved', 'rejected'
+            created_by  INTEGER NOT NULL,
+            created_at  TEXT    DEFAULT (datetime('now')),
+            updated_at  TEXT    DEFAULT (datetime('now')),
+            FOREIGN KEY (event_id)   REFERENCES events(id)     ON DELETE CASCADE,
+            FOREIGN KEY (vendor_id)  REFERENCES vendors(id)    ON DELETE SET NULL,
+            FOREIGN KEY (created_by) REFERENCES users(id)      ON DELETE SET NULL
+        )
+    """)
+
+    # ── 12. Sponsorship Management Table ──────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS sponsors (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id            INTEGER NOT NULL,
+            sponsor_name        TEXT    NOT NULL,
+            contact_person      TEXT    DEFAULT '',
+            contact_email       TEXT    DEFAULT '',
+            contact_phone       TEXT    DEFAULT '',
+            sponsorship_amount  REAL    NOT NULL DEFAULT 0,
+            sponsorship_type    TEXT    DEFAULT 'Gold', -- 'Platinum', 'Gold', 'Silver', 'Bronze', 'In-kind'
+            status              TEXT    DEFAULT 'pending', -- 'pending', 'approved', 'rejected', 'confirmed'
+            notes               TEXT    DEFAULT '',
+            created_by          INTEGER NOT NULL,
+            created_at          TEXT    DEFAULT (datetime('now')),
+            updated_at          TEXT    DEFAULT (datetime('now')),
+            FOREIGN KEY (event_id)   REFERENCES events(id)  ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id)   ON DELETE SET NULL
+        )
+    """)
+
+    # ── 13. Approval Workflow Table ───────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS approvals (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id        INTEGER NOT NULL,
+            requester_id    INTEGER NOT NULL,
+            request_type    TEXT    NOT NULL, -- 'vendor', 'expense', 'resource', 'sponsorship'
+            reference_id    INTEGER NOT NULL,
+            amount          REAL    DEFAULT 0,
+            reason          TEXT    DEFAULT '',
+            status          TEXT    DEFAULT 'pending', -- 'pending', 'approved', 'rejected'
+            reviewed_by     INTEGER,
+            reviewed_at     TEXT    DEFAULT NULL,
+            reviewer_comment TEXT   DEFAULT '',
+            created_at      TEXT    DEFAULT (datetime('now')),
+            FOREIGN KEY (event_id)    REFERENCES events(id) ON DELETE CASCADE,
+            FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (reviewed_by) REFERENCES users(id)  ON DELETE SET NULL
+        )
+    """)
+
+    # ── 14. Reminder Tracking Table ───────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS reminder_tracking (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id        INTEGER NOT NULL,
+            user_id         INTEGER,
+            email           TEXT    DEFAULT '',
+            reminder_type   TEXT    NOT NULL, -- '24h', '1h'
+            scheduled_time  TEXT    NOT NULL,
+            sent_at         TEXT    DEFAULT NULL,
+            is_sent         INTEGER DEFAULT 0,
+            created_at      TEXT    DEFAULT (datetime('now')),
+            FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id)  REFERENCES users(id)  ON DELETE CASCADE
+        )
+    """)
+
+    # ── 15. Vendor Performance Ratings Table ──────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS vendor_performance (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            vendor_id           INTEGER NOT NULL,
+            event_id            INTEGER NOT NULL,
+            quality_rating      INTEGER DEFAULT 3, -- 1-5
+            timeliness_rating   INTEGER DEFAULT 3, -- 1-5
+            cost_rating         INTEGER DEFAULT 3, -- 1-5
+            communication_rating INTEGER DEFAULT 3, -- 1-5
+            overall_rating      INTEGER DEFAULT 3, -- 1-5
+            comments            TEXT    DEFAULT '',
+            rated_by            INTEGER NOT NULL,
+            created_at          TEXT    DEFAULT (datetime('now')),
+            updated_at          TEXT    DEFAULT (datetime('now')),
+            FOREIGN KEY (vendor_id)  REFERENCES vendors(id)  ON DELETE CASCADE,
+            FOREIGN KEY (event_id)   REFERENCES events(id)   ON DELETE CASCADE,
+            FOREIGN KEY (rated_by)   REFERENCES users(id)    ON DELETE SET NULL
+        )
+    """)
+
+    # ── 16. Audit Logs ────────────────────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor_id       INTEGER,
+            actor_name     TEXT    DEFAULT 'System',
+            actor_role     TEXT    DEFAULT 'system',
+            action         TEXT    NOT NULL,
+            object_type    TEXT    NOT NULL,
+            object_id      INTEGER,
+            object_label   TEXT    DEFAULT '',
+            previous_value TEXT    DEFAULT NULL,
+            new_value      TEXT    DEFAULT NULL,
+            created_at     TEXT    DEFAULT (datetime('now')),
+            FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+
+    # ── 17. Check-in Audit Trail ──────────────────────────────────────────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS checkins (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id       INTEGER NOT NULL,
+            attendee_id    INTEGER NOT NULL,
+            ticket_id      TEXT    DEFAULT '',
+            checked_in_by  INTEGER,
+            checkin_time   TEXT    DEFAULT (datetime('now')),
+            method         TEXT    DEFAULT 'qr',
+            FOREIGN KEY (event_id)      REFERENCES events(id)    ON DELETE CASCADE,
+            FOREIGN KEY (attendee_id)   REFERENCES attendees(id) ON DELETE CASCADE,
+            FOREIGN KEY (checked_in_by) REFERENCES users(id)     ON DELETE SET NULL
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS schema_flags (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+
+    # ── 18. Safe Column Migrations for Existing Databases ─────────────────────
     migrations = [
         ("events", "description", "TEXT DEFAULT ''"),
         ("events", "banner_url", "TEXT DEFAULT ''"),
@@ -181,14 +344,15 @@ def init_db():
         ("events", "category", "TEXT DEFAULT 'Technology'"),
         ("events", "visibility", "TEXT DEFAULT 'public'"),
         ("events", "organizer_id", "INTEGER"),
-        ("events", "created_at", "TEXT DEFAULT (datetime('now'))"),
-        ("events", "updated_at", "TEXT DEFAULT (datetime('now'))"),
+        ("events", "created_at", "TEXT DEFAULT ''"),
+        ("events", "updated_at", "TEXT DEFAULT ''"),
+        ("events", "end_time", "TEXT DEFAULT ''"),
         ("attendees", "user_id", "INTEGER"),
         ("attendees", "custom_fields", "TEXT DEFAULT '{}'"),
         ("attendees", "checkin_time", "TEXT DEFAULT NULL"),
         ("attendees", "cancelled_at", "TEXT DEFAULT NULL"),
         ("tickets", "qr_token", "TEXT DEFAULT ''"),
-        ("tickets", "issued_at", "TEXT DEFAULT (datetime('now'))"),
+        ("tickets", "issued_at", "TEXT DEFAULT ''"),
         ("users", "phone", "TEXT DEFAULT ''"),
         ("users", "organization", "TEXT DEFAULT ''"),
         ("users", "status", "TEXT DEFAULT 'active'"),
@@ -201,22 +365,72 @@ def init_db():
             # Column already exists
             pass
 
-    # ── 11. Seed Default Users & Initial Data ─────────────────────────────────
-    seed_users = [
-        ("System Administrator", "admin@eventsphere.com", "admin123", "admin", "Infosys ERP Admin"),
-        ("Event Organizer", "organizer@eventsphere.com", "organizer123", "organizer", "Tech Events Council"),
-        ("Arun Kumar", "user@eventsphere.com", "user123", "participant", "Anna University"),
-        ("Sneha Sharma", "sneha@eventsphere.com", "user123", "participant", "IIT Madras"),
-    ]
+    # Backfill timestamps for any blank records
+    try:
+        cur.execute("UPDATE events SET created_at = datetime('now') WHERE created_at = '' OR created_at IS NULL")
+        cur.execute("UPDATE events SET updated_at = datetime('now') WHERE updated_at = '' OR updated_at IS NULL")
+        cur.execute("UPDATE tickets SET issued_at = datetime('now') WHERE issued_at = '' OR issued_at IS NULL")
+    except sqlite3.OperationalError:
+        pass
 
-    for name, email, pwd, role, org in seed_users:
-        existing = cur.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
-        if not existing:
-            cur.execute(
-                """INSERT INTO users (name, email, password_hash, role, organization)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (name, email, hash_password(pwd), role, org),
-            )
+    cur.execute("UPDATE events SET status = 'published' WHERE status = 'planned'")
+
+    try:
+        cur.execute(
+            """CREATE UNIQUE INDEX IF NOT EXISTS idx_active_attendee_email
+               ON attendees(event_id, email) WHERE status != 'cancelled'"""
+        )
+        cur.execute(
+            """CREATE UNIQUE INDEX IF NOT EXISTS idx_active_attendee_user
+               ON attendees(event_id, user_id)
+               WHERE user_id IS NOT NULL AND status != 'cancelled'"""
+        )
+    except sqlite3.OperationalError:
+        pass
+
+    restored = cur.execute(
+        "SELECT value FROM schema_flags WHERE key = 'resource_stock_restored'"
+    ).fetchone()
+    if not restored:
+        cur.execute(
+            """UPDATE resources SET quantity = quantity + COALESCE((
+                   SELECT SUM(quantity_used) FROM event_resources er WHERE er.resource_id = resources.id
+               ), 0)"""
+        )
+        cur.execute(
+            "INSERT INTO schema_flags (key, value) VALUES ('resource_stock_restored', '1')"
+        )
+
+    # ── Demo admin account (development only) ─────────────────────────────────
+    # Seed a single admin demo login; remove other legacy demo accounts.
+    demo_admin_email = "admin@eventsphere.com"
+    demo_admin_password = "admin123"
+    legacy_demo_emails = (
+        "organizer@eventsphere.com",
+        "user@eventsphere.com",
+        "sneha@eventsphere.com",
+    )
+    cur.execute(
+        "DELETE FROM users WHERE email IN (?, ?, ?)",
+        legacy_demo_emails,
+    )
+    admin_row = cur.execute(
+        "SELECT id FROM users WHERE email = ?",
+        (demo_admin_email,),
+    ).fetchone()
+    if not admin_row:
+        cur.execute(
+            """INSERT INTO users (name, email, password_hash, role, phone, organization, status)
+               VALUES (?, ?, ?, 'admin', '', 'EventSphere', 'active')""",
+            ("Demo Admin", demo_admin_email, hash_password(demo_admin_password)),
+        )
+    else:
+        cur.execute(
+            """UPDATE users SET password_hash = ?, role = 'admin', status = 'active', name = 'Demo Admin'
+               WHERE email = ?""",
+            (hash_password(demo_admin_password), demo_admin_email),
+        )
 
     conn.commit()
     conn.close()
+

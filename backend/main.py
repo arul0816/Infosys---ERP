@@ -13,6 +13,12 @@ from routes import (
     vendors,
     analytics,
     notifications,
+    budgets,
+    expenses,
+    sponsors,
+    approvals,
+    reminders,
+    vendor_performance,
 )
 
 app = FastAPI(
@@ -73,7 +79,12 @@ app.include_router(reports.router,       prefix="/reports",       tags=["Reports
 app.include_router(venues.router,        prefix="/venues",        tags=["Venues"])
 app.include_router(resources.router,     prefix="/resources",     tags=["Resources"])
 app.include_router(vendors.router,       prefix="/vendors",       tags=["Vendors"])
-
+app.include_router(budgets.router,       prefix="/budgets",       tags=["Budget Management"])
+app.include_router(expenses.router,      prefix="/expenses",      tags=["Expense Tracking"])
+app.include_router(sponsors.router,      prefix="/sponsors",      tags=["Sponsorship Management"])
+app.include_router(approvals.router,     prefix="/approvals",     tags=["Approval Workflow"])
+app.include_router(reminders.router,     prefix="/reminders",     tags=["Event Reminders"])
+app.include_router(vendor_performance.router, prefix="/vendor-performance", tags=["Vendor Performance Ratings"])
 
 @app.get("/")
 def root():

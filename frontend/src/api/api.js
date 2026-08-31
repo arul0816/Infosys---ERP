@@ -14,7 +14,11 @@ const getHeaders = (extra = {}) => {
 const handle = async (res) => {
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "Request failed" }));
-    throw new Error(err.detail || "Request failed");
+    const detail = err.detail;
+    const message = Array.isArray(detail)
+      ? detail.map((e) => e.msg || String(e)).join("; ")
+      : detail || "Request failed";
+    throw new Error(message);
   }
   return res.json();
 };
@@ -99,6 +103,57 @@ export const api = {
   getCategoryDistribution:  ()           => get("/analytics/category-distribution"),
   getTopEvents:             (limit=5)    => get(`/analytics/top-events?limit=${limit}`),
   getAttendanceBreakdown:   ()           => get("/analytics/attendance-breakdown"),
+  getAnalyticsOverview:     ()           => get("/analytics/overview"),
+  getAttendanceAnalytics:   ()           => get("/analytics/attendance"),
+  getBudgetAnalytics:       (eventId)    => get(`/analytics/budget${eventId ? `?event_id=${eventId}` : ""}`),
+  getVendorAnalytics:       ()           => get("/analytics/vendors"),
+  getResourceAnalytics:     ()           => get("/analytics/resources"),
+  getEventComparison:       (eventIds)   => get(`/analytics/event-comparison?event_ids=${eventIds.join(",")}`),
+  getForecast:              ()           => get("/analytics/forecast"),
+  getAuditLogs:             (params = "") => get(`/analytics/audit-logs${params ? `?${params}` : ""}`),
+  getCheckinLogs:           (eventId)    => get(`/registrations/checkins${eventId ? `?event_id=${eventId}` : ""}`),
+
+
+  // ── Budget Management ──────────────────────────────────────────────────────
+  createBudget:          (eventId, data) => post(`/budgets/${eventId}`, data),
+  getBudget:             (eventId)       => get(`/budgets/${eventId}`),
+  updateBudget:          (eventId, data) => put(`/budgets/${eventId}`, data),
+  deleteBudget:          (eventId)       => del(`/budgets/${eventId}`),
+  getBudgetSummary:      (eventId)       => get(`/budgets/${eventId}/summary`),
+
+  // ── Expense Tracking ───────────────────────────────────────────────────────
+  createExpense:         (eventId, data) => post(`/expenses/${eventId}/expenses`, data),
+  getExpenses:           (eventId)       => get(`/expenses/${eventId}/expenses`),
+  updateExpense:         (eventId, expenseId, data) => put(`/expenses/${eventId}/expenses/${expenseId}`, data),
+  deleteExpense:         (eventId, expenseId) => del(`/expenses/${eventId}/expenses/${expenseId}`),
+  getExpense:            (eventId, expenseId) => get(`/expenses/${eventId}/expenses/${expenseId}`),
+  getExpensesSummary:    (eventId)       => get(`/expenses/${eventId}/expenses-summary`),
+
+  // ── Sponsorship Management ─────────────────────────────────────────────────
+  createSponsor:         (eventId, data) => post(`/sponsors/${eventId}/sponsors`, data),
+  getSponsors:           (eventId)       => get(`/sponsors/${eventId}/sponsors`),
+  updateSponsor:         (eventId, sponsorId, data) => put(`/sponsors/${eventId}/sponsors/${sponsorId}`, data),
+  deleteSponsor:         (eventId, sponsorId) => del(`/sponsors/${eventId}/sponsors/${sponsorId}`),
+  getSponsor:            (eventId, sponsorId) => get(`/sponsors/${eventId}/sponsors/${sponsorId}`),
+  getSponsorshipSummary: (eventId)       => get(`/sponsors/${eventId}/sponsors-summary`),
+
+  // ── Approval Workflow ──────────────────────────────────────────────────────
+  getApprovals:          (params = "")   => get(`/approvals${params ? `?${params}` : ""}`),
+  getApproval:           (approvalId)    => get(`/approvals/${approvalId}`),
+  reviewApproval:        (approvalId, data) => put(`/approvals/${approvalId}/review`, data),
+  getPendingApprovalsCount: () => get("/approvals/stats/pending-count"),
+
+  // ── Vendor Performance & Ratings ───────────────────────────────────────────
+  submitVendorRating:    (vendorId, eventId, data) => post(`/vendor-performance/${vendorId}/performance?event_id=${eventId}`, data),
+  getVendorPerformance:  (vendorId)       => get(`/vendor-performance/${vendorId}/performance-summary`),
+  getVendorRatings:      (vendorId)       => get(`/vendor-performance/${vendorId}/performance`),
+  getTopVendors:         (params = "")    => get(`/vendor-performance/rankings/top-vendors${params ? `?${params}` : ""}`),
+  updateVendorRating:    (vendorId, ratingId, data) => put(`/vendor-performance/${vendorId}/performance/${ratingId}`, data),
+
+  // ── Reminders ──────────────────────────────────────────────────────────────
+  sendEventReminders:    (eventId)       => post(`/reminders/${eventId}/send`, {}),
+  getReminderTracking:   (eventId)       => get(`/reminders/${eventId}/tracking`),
+  processScheduledReminders: () => post("/reminders/process-scheduled-reminders", {}),
 
   // ── Reports & CSV Exports ──────────────────────────────────────────────────
   getReport:         ()                => get("/reports"),

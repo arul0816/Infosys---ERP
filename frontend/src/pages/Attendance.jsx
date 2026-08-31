@@ -7,6 +7,7 @@ export default function Attendance() {
   const [events, setEvents] = useState([]);
   const [eventId, setEventId] = useState("");
   const [attendance, setAttendance] = useState(null);
+  const [checkinLogs, setCheckinLogs] = useState([]);
   const [qrMap, setQrMap] = useState({});
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -31,8 +32,12 @@ export default function Attendance() {
   const loadAttendance = async (eid) => {
     if (!eid) return;
     try {
-      const data = await api.getAttendance(eid);
+      const [data, logs] = await Promise.all([
+        api.getAttendance(eid),
+        api.getCheckinLogs(eid).catch(() => []),
+      ]);
       setAttendance(data);
+      setCheckinLogs(logs);
 
       const map = {};
       for (const a of data.attendees) {
@@ -53,6 +58,7 @@ export default function Attendance() {
     const val = e.target.value;
     setEventId(val);
     setAttendance(null);
+    setCheckinLogs([]);
     setQrMap({});
     if (val) loadAttendance(val);
   };
@@ -279,6 +285,73 @@ export default function Attendance() {
               </div>
             )}
           </div>
+
+          {/* Verified Check-In Audit Trail */}
+          <div className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.75rem" }}>
+              <div>
+                <h2>🛡️ Attendance Audit Trail & Verified Check-Ins ({checkinLogs.length})</h2>
+                <p style={{ fontSize: "0.85rem", color: "#64748b", margin: 0 }}>
+                  Real-time scan logs recording verified ticket signatures, timestamps, and staff auditors
+                </p>
+              </div>
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => loadAttendance(eventId)}
+              >
+                🔄 Refresh Logs
+              </button>
+            </div>
+
+            {checkinLogs.length === 0 ? (
+              <p className="empty-state">No check-ins recorded for this event yet.</p>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Check-In Timestamp</th>
+                      <th>Ticket ID</th>
+                      <th>Attendee</th>
+                      <th>Email / Contact</th>
+                      <th>Verified By (Staff)</th>
+                      <th>Scan Method</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {checkinLogs.map((log) => (
+                      <tr key={log.id}>
+                        <td style={{ whiteSpace: "nowrap", fontSize: "0.85rem", color: "#059669", fontWeight: 600 }}>
+                          ✔ {log.checkin_time}
+                        </td>
+                        <td>
+                          <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#1e293b" }}>
+                            {log.ticket_id}
+                          </span>
+                        </td>
+                        <td>
+                          <strong>{log.attendee_name}</strong>
+                        </td>
+                        <td>
+                          {log.attendee_email}
+                        </td>
+                        <td>
+                          <span className="badge badge-active" style={{ fontSize: "0.78rem" }}>
+                            {log.staff_name || "Authorized Staff"} ({log.staff_role || "organizer"})
+                          </span>
+                        </td>
+                        <td>
+                          <span className="badge badge-outline" style={{ fontSize: "0.75rem", textTransform: "uppercase" }}>
+                            {log.method === "qr" ? "📷 QR Payload" : "⌨️ Manual Key"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -296,3 +369,4 @@ export default function Attendance() {
     </div>
   );
 }
+

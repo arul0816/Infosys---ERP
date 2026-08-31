@@ -21,15 +21,59 @@ class TestEventSphereBackend(unittest.TestCase):
         init_db()
 
     def setUp(self):
-        # Obtain tokens for seeded admin, organizer, participant
-        res_admin = client.post("/auth/login", json={"email": "admin@eventsphere.com", "password": "admin123"})
+        # Create fresh test accounts instead of depending on demo credentials.
+        admin_email = f"admin_{os.urandom(4).hex()}@test.com"
+        org_email = f"organizer_{os.urandom(4).hex()}@test.com"
+        user_email = f"user_{os.urandom(4).hex()}@test.com"
+
+        res_admin = client.post("/auth/register", json={
+            "name": "Admin Test User",
+            "email": admin_email,
+            "password": "adminpass123",
+            "role": "admin",
+            "phone": "1111111111",
+            "organization": "Test Org"
+        })
+        self.assertEqual(res_admin.status_code, 201)
         self.admin_token = res_admin.json()["token"]
 
-        res_org = client.post("/auth/login", json={"email": "organizer@eventsphere.com", "password": "organizer123"})
+        res_org = client.post("/auth/register", json={
+            "name": "Organizer Test User",
+            "email": org_email,
+            "password": "organizerpass123",
+            "role": "organizer",
+            "phone": "2222222222",
+            "organization": "Test Org"
+        })
+        self.assertEqual(res_org.status_code, 201)
         self.org_token = res_org.json()["token"]
 
-        res_user = client.post("/auth/login", json={"email": "user@eventsphere.com", "password": "user123"})
+        res_user = client.post("/auth/register", json={
+            "name": "Participant Test User",
+            "email": user_email,
+            "password": "userpass123",
+            "role": "participant",
+            "phone": "3333333333",
+            "organization": "Test Org"
+        })
+        self.assertEqual(res_user.status_code, 201)
         self.user_token = res_user.json()["token"]
+
+    def test_00_demo_admin_account(self):
+        db = get_db()
+        legacy_demos = db.execute(
+            "SELECT email FROM users WHERE email IN (?, ?, ?)",
+            ("organizer@eventsphere.com", "user@eventsphere.com", "sneha@eventsphere.com")
+        ).fetchall()
+        db.close()
+        self.assertEqual(legacy_demos, [])
+
+        login_res = client.post("/auth/login", json={
+            "email": "admin@eventsphere.com",
+            "password": "admin123",
+        })
+        self.assertEqual(login_res.status_code, 200)
+        self.assertEqual(login_res.json()["user"]["role"], "admin")
 
     # ── 1. Authentication & RBAC Tests ────────────────────────────────────────
 
@@ -212,6 +256,118 @@ class TestEventSphereBackend(unittest.TestCase):
         self.assertEqual(csv_res.status_code, 200)
         self.assertIn("text/csv", csv_res.headers["content-type"])
         self.assertIn("Event ID", csv_res.text)
+
+    def test_06_priority2_analytics_and_reports(self):
+        # Create a real event with registrations and a vendor assignment
+        venue_res = client.post(
+            "/venues/",
+            json={"name": f"Analytics Hall {os.urandom(3).hex()}", "capacity": 200, "location": "North Block"},
+            headers={"Authorization": f"Bearer {self.org_token}"},
+        )
+        self.assertEqual(venue_res.status_code, 201)
+        venue_id = venue_res.json()["id"]
+
+        event_res = client.post(
+            "/events/",
+            json={
+                "name": "Priority 2 Analytics Demo Event",
+                "event_type": "Conference",
+                "date": "2026-12-10",
+                "time": "10:00 AM",
+                "budget": 150000,
+                "status": "published",
+                "venue_id": venue_id,
+                "description": "Analytics validation event.",
+                "capacity": 5,
+                "category": "Technology",
+                "visibility": "public",
+            },
+            headers={"Authorization": f"Bearer {self.org_token}"},
+        )
+        self.assertEqual(event_res.status_code, 201)
+        event_id = event_res.json()["id"]
+
+        reg_res = client.post(
+            "/registrations/",
+            json={
+                "event_id": event_id,
+                "name": "Priority Analytics User",
+                "email": f"priority_{os.urandom(3).hex()}@test.com",
+                "phone": "9087654321",
+                "college": "Test College",
+            },
+        )
+        self.assertEqual(reg_res.status_code, 201)
+
+        vendor_res = client.post(
+            "/vendors/",
+            json={"name": "Priority Vendor", "service_type": "Catering", "contact": "9876543210"},
+            headers={"Authorization": f"Bearer {self.org_token}"},
+        )
+        self.assertEqual(vendor_res.status_code, 201)
+        vendor_id = vendor_res.json()["id"]
+
+        assign_res = client.post(
+            "/vendors/assign",
+            json={"vendor_id": vendor_id, "event_id": event_id},
+            headers={"Authorization": f"Bearer {self.org_token}"},
+        )
+        self.assertEqual(assign_res.status_code, 201)
+
+        rating_res = client.post(
+            f"/vendor-performance/{vendor_id}/performance?event_id={event_id}",
+            json={
+                "quality_rating": 5,
+                "timeliness_rating": 4,
+                "cost_rating": 4,
+                "communication_rating": 5,
+                "overall_rating": 4,
+                "comments": "Strong performance",
+            },
+            headers={"Authorization": f"Bearer {self.org_token}"},
+        )
+        self.assertEqual(rating_res.status_code, 201)
+
+        overview_res = client.get("/analytics/overview", headers={"Authorization": f"Bearer {self.org_token}"})
+        self.assertEqual(overview_res.status_code, 200)
+        overview = overview_res.json()
+        self.assertIn("kpis", overview)
+        self.assertIn("total_events", overview["kpis"])
+
+        attendance_res = client.get("/analytics/attendance", headers={"Authorization": f"Bearer {self.org_token}"})
+        self.assertEqual(attendance_res.status_code, 200)
+        self.assertIn("attendance_rate", attendance_res.json())
+
+        budget_res = client.get(f"/analytics/budget?event_id={event_id}", headers={"Authorization": f"Bearer {self.org_token}"})
+        self.assertEqual(budget_res.status_code, 200)
+        self.assertIn("total_budget", budget_res.json())
+
+        vendor_res = client.get("/analytics/vendors", headers={"Authorization": f"Bearer {self.org_token}"})
+        self.assertEqual(vendor_res.status_code, 200)
+        self.assertIn("avg_overall_rating", vendor_res.json())
+
+        resources_res = client.get("/analytics/resources", headers={"Authorization": f"Bearer {self.org_token}"})
+        self.assertEqual(resources_res.status_code, 200)
+        self.assertIn("resource_utilization", resources_res.json())
+
+        comparison_res = client.get(
+            f"/analytics/event-comparison?event_ids={event_id}",
+            headers={"Authorization": f"Bearer {self.org_token}"},
+        )
+        self.assertEqual(comparison_res.status_code, 200)
+        self.assertIn("events", comparison_res.json())
+
+        forecast_res = client.get("/analytics/forecast", headers={"Authorization": f"Bearer {self.org_token}"})
+        self.assertEqual(forecast_res.status_code, 200)
+        self.assertIn("forecast", forecast_res.json())
+
+        pdf_res = client.get(f"/reports/events/{event_id}/pdf", headers={"Authorization": f"Bearer {self.org_token}"})
+        self.assertEqual(pdf_res.status_code, 200)
+        self.assertIn("application/pdf", pdf_res.headers["content-type"])
+
+        csv_res = client.get(f"/reports/events/{event_id}/attendees/csv", headers={"Authorization": f"Bearer {self.org_token}"})
+        self.assertEqual(csv_res.status_code, 200)
+        self.assertIn("text/csv", csv_res.headers["content-type"])
 
 
 if __name__ == "__main__":

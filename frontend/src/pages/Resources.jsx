@@ -9,19 +9,24 @@ export default function Resources() {
   const [resources, setResources] = useState([]);
   const [events, setEvents] = useState([]);
   const [allocations, setAllocations] = useState([]);
+  const [resourceAnalytics, setResourceAnalytics] = useState(null);
   const [resForm, setResForm] = useState(EMPTY_RES);
   const [allocForm, setAllocForm] = useState(EMPTY_ALLOC);
   const [msg, setMsg] = useState(null);
   const { isOrganizer, isAdmin } = useAuth();
 
   const load = () =>
-    Promise.all([api.getResources(), api.getEvents(), api.getAllocations()]).then(
-      ([r, e, a]) => {
-        setResources(r);
-        setEvents(e);
-        setAllocations(a);
-      }
-    );
+    Promise.all([
+      api.getResources(),
+      api.getEvents(),
+      api.getAllocations(),
+      api.getResourceAnalytics().catch(() => null),
+    ]).then(([r, e, a, analytics]) => {
+      setResources(r);
+      setEvents(e);
+      setAllocations(a);
+      setResourceAnalytics(analytics);
+    });
 
   useEffect(() => {
     load();
@@ -90,6 +95,41 @@ export default function Resources() {
       </div>
 
       {msg && <div className={`alert alert-${msg.type}`}>{msg.text}</div>}
+
+      {/* Resource Utilization Panel */}
+      {resourceAnalytics && isOrganizer && (
+        <div className="card" style={{ marginBottom: "1.5rem" }}>
+          <h2>📦 Resource Utilization & Optimization</h2>
+          <div className="stat-row" style={{ marginTop: "1rem" }}>
+            <div className="stat-card">
+              <div className="stat-value">{resourceAnalytics.total_resources}</div>
+              <div className="stat-label">Total Units</div>
+            </div>
+            <div className="stat-card" style={{ background: "#4338ca" }}>
+              <div className="stat-value">{resourceAnalytics.allocated_resources}</div>
+              <div className="stat-label">Allocated</div>
+            </div>
+            <div className="stat-card" style={{ background: "#059669" }}>
+              <div className="stat-value">{resourceAnalytics.available_resources}</div>
+              <div className="stat-label">Available</div>
+            </div>
+            <div className="stat-card" style={{ background: "#d97706" }}>
+              <div className="stat-value">{resourceAnalytics.resource_utilization}%</div>
+              <div className="stat-label">Utilization</div>
+            </div>
+          </div>
+          {[...(resourceAnalytics.reuse_suggestions || []), ...(resourceAnalytics.recommendations || [])].length > 0 && (
+            <div style={{ marginTop: "1rem" }}>
+              <strong>Optimization Suggestions:</strong>
+              {[...(resourceAnalytics.reuse_suggestions || []), ...(resourceAnalytics.recommendations || [])].map((r, i) => (
+                <div key={i} style={{ padding: "0.5rem", background: "#f0fdf4", borderRadius: "4px", marginTop: "0.5rem", fontSize: "0.9rem" }}>
+                  ♻️ {r.message}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Forms (Organizers / Admins) */}
       {isOrganizer && (
@@ -239,7 +279,10 @@ export default function Resources() {
 
       {/* Active Allocations Table */}
       <div className="card">
-        <h2>Active Equipment Allocations ({allocations.length})</h2>
+        <h2>Active Equipment Allocations & Time Windows ({allocations.length})</h2>
+        <p style={{ fontSize: "0.85rem", color: "#64748b", margin: "0 0 1rem 0" }}>
+          Equipment can be reused across different time slots on the same date without conflicts.
+        </p>
         {allocations.length === 0 ? (
           <p className="empty-state">No resources currently allocated.</p>
         ) : (
@@ -249,6 +292,7 @@ export default function Resources() {
                 <tr>
                   <th>#</th>
                   <th>Event Name</th>
+                  <th>Scheduled Window</th>
                   <th>Reserved Resource</th>
                   <th>Units Reserved</th>
                   {isOrganizer && <th>Action</th>}
@@ -260,6 +304,12 @@ export default function Resources() {
                     <td>{a.id}</td>
                     <td>
                       <strong>{a.event_name}</strong>
+                    </td>
+                    <td>
+                      {a.event_date || "—"} <br />
+                      <span style={{ fontSize: "0.78rem", color: "#64748b" }}>
+                        {a.event_time} {a.event_end_time ? `– ${a.event_end_time}` : ""}
+                      </span>
                     </td>
                     <td>{a.resource_name}</td>
                     <td>

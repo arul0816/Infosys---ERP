@@ -69,6 +69,9 @@ body {
   margin: 0 auto;
   padding: 2rem 1.5rem 4rem 1.5rem;
   flex: 1;
+  min-width: 0;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 /* ── Page Header ───────────────────────────────────────────────────────────── */
@@ -963,15 +966,56 @@ tbody tr:last-child {
 }
 
 @media print {
-  body * { visibility: hidden; }
-  .ticket-pass-container, .ticket-pass-container * { visibility: visible; }
-  .ticket-pass-container {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
+  body.printing-ticket-pass {
+    background: #fff !important;
   }
-  .ticket-pass-footer { display: none; }
+
+  body.printing-ticket-pass .navbar-header {
+    display: none !important;
+  }
+
+  body.printing-ticket-pass .modal-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    background: #fff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    display: block !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    z-index: 2147483647 !important;
+  }
+
+  body.printing-ticket-pass .modal-content,
+  body.printing-ticket-pass .ticket-modal-wrap {
+    position: static !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  body.printing-ticket-pass .ticket-pass-container {
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: 2px solid #334155 !important;
+    page-break-inside: avoid;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body.printing-ticket-pass .ticket-pass-footer {
+    display: none !important;
+  }
+
+  body.printing-ticket-pass .main-content > *:not(:has(.ticket-pass-container)) {
+    display: none !important;
+  }
 }
 
 /* ── QR Scanner Modal ──────────────────────────────────────────────────────── */
@@ -1111,8 +1155,9 @@ tbody tr:last-child {
 /* ── Profile Page Layout ───────────────────────────────────────────────────── */
 .profile-layout-grid {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: minmax(0, 280px) minmax(0, 1fr);
   gap: 1.5rem;
+  align-items: start;
 }
 @media (max-width: 768px) {
   .profile-layout-grid { grid-template-columns: 1fr; }
@@ -1122,6 +1167,16 @@ tbody tr:last-child {
   display: flex;
   flex-direction: column;
   align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+.profile-email {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  margin-bottom: 0.5rem;
 }
 .profile-avatar-large {
   width: 76px;

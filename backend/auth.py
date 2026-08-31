@@ -108,9 +108,14 @@ def verify_ticket_payload(token_str: str) -> tuple[bool, Optional[dict]]:
         if not ticket:
             return False, None
 
+        # Verify signature matches the cryptographic token registered for the ticket
+        if ticket["qr_token"] and ticket["qr_token"].strip() != token_str.strip():
+            return False, None
+
         return True, dict(ticket)
     except Exception:
         return False, None
+
 
 
 def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer)) -> dict:
@@ -166,13 +171,22 @@ def get_optional_current_user(credentials: Optional[HTTPAuthorizationCredentials
     return dict(user) if user and user["status"] == "active" else None
 
 
-def require_roles(allowed_roles: List[str]):
+def require_roles(allowed_roles: List[str], auto_error: bool = True):
     """Role-based authorization dependency factory."""
-    def role_checker(current_user: dict = Depends(get_current_user)):
-        if current_user["role"] not in allowed_roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access forbidden: requires one of the following roles: {', '.join(allowed_roles)}",
-            )
-        return current_user
-    return role_checker
+    if auto_error:
+        # Strict mode: requires authentication and specific role
+        def role_checker(current_user: dict = Depends(get_current_user)):
+            if current_user["role"] not in allowed_roles:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Access forbidden: requires one of the following roles: {', '.join(allowed_roles)}",
+                )
+            return current_user
+        return role_checker
+    else:
+        # Optional mode: authentication optional, role check if authenticated
+        def optional_role_checker(current_user: Optional[dict] = Depends(get_optional_current_user)):
+            if current_user and current_user["role"] not in allowed_roles:
+                return None  # User authenticated but doesn't have required role
+            return current_user
+        return optional_role_checker
